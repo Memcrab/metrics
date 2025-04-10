@@ -19,9 +19,12 @@ composer require memcrab/metrics
 
 ### Initialize a client
 
+You must call init() before sending any metrics.
+If you want to disable metric sending (e.g., in a LOCAL or test environment), pass false as the second argument.
+
 ```php
 $influxDBListenerUrl = 'http://127.0.0.1:8186/api/v2/write';
-Metric::obj()->init($influxDBListenerUrl);
+Metric::obj()->init($influxDBListenerUrl, ENVIRONMENT !== 'local');
 ```
 
 ### Sending Metrics

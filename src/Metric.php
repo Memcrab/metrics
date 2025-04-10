@@ -16,6 +16,14 @@ class Metric
     private int $telegrafPort;
     private string $telegrafPath;
     private bool $initialized = false;
+
+    /**
+     * Indicates whether metric sending is enabled.
+     *
+     * If set to false (e.g. in a LOCAL or testing environment), all metric operations
+     * such as initialization, writing, and sending will be skipped.
+     */
+    private bool $enabled = true;
     
 
     private function __construct() {}
@@ -61,18 +69,25 @@ class Metric
      * Initializes the Telegraf client connection parameters from the given URL
      * and checks the availability of the Telegraf server.
      *
+     * - If $enabled is false, disables metric sending and skips initialization
      * - Parses the URL and stores host, port, and path.
      * - Sends a test request to verify Telegraf connectivity.
      * - Emits warnings for connection errors or HTTP status codes >= 400.
      *
      * @param string $telegrafUrl Full URL to the Telegraf HTTP listener (e.g. http://localhost:8186/api/v2/write).
+     * @param bool $enabled Whether to enable metric sending (e.g. skip in LOCAL environment).
      *
      * @return self Returns the current instance for method chaining.
      *
      * @triggers E_USER_WARNING If Telegraf is unreachable or returns a 4xx/5xx HTTP status.
      */
-    public function init(string $telegrafUrl): self
+    public function init(string $telegrafUrl, bool $enabled = true): self
     {
+        if (!$enabled) {
+            $this->enabled = false;
+            return $this;
+        }
+
         $httpCode = $this->testTelegrafConnection($telegrafUrl);
 
         if ($httpCode === null) {
@@ -108,6 +123,10 @@ class Metric
      */
     public function write(string $name, array $tags, array $fields, null|float|\DateTimeInterface $timestamp = null): void
     {
+        if (!$this->enabled) {
+            return;
+        }
+
         if (!$this->initialized) {
             throw new \RuntimeException('Metric initialization missing. Call init() first.');
         }
@@ -152,6 +171,10 @@ class Metric
      */
     public function send(PointWithContext $PointWithContext): void
     {
+        if (!$this->enabled) {
+            return;
+        }
+
         if (!$this->initialized) {
             throw new \RuntimeException('Metric initialization missing. Call init() first.');
         }
