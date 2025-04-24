@@ -4,7 +4,8 @@ namespace Memcrab\Metrics;
 
 require_once 'vendor/autoload.php';
 
-
+use InfluxDB2\Model\WritePrecision;
+use InfluxDB2\Point;
 use OpenSwoole\Coroutine;
 use OpenSwoole\Coroutine\Http\Client;
 
@@ -16,6 +17,7 @@ class Metric
     private int $telegrafPort;
     private string $telegrafPath;
     private bool $initialized = false;
+    private string $writePrecision;
 
     /**
      * Indicates whether metric sending is enabled.
@@ -76,12 +78,19 @@ class Metric
      *
      * @param string $telegrafUrl Full URL to the Telegraf HTTP listener (e.g. http://localhost:8186/api/v2/write).
      * @param bool $enabled Whether to enable metric sending (e.g. skip in LOCAL environment).
+     * @param string $writePrecision The precision of the timestamp. This determines the unit of time for the timestamp.
+     * Valid values are:
+     * - 'ns' (nanoseconds)
+     * - 'us' (microseconds)
+     * - 'ms' (milliseconds)
+     * - 's' (seconds)
+     * Default value is Point::DEFAULT_WRITE_PRECISION ('ns').
      *
      * @return self Returns the current instance for method chaining.
      *
      * @triggers E_USER_WARNING If Telegraf is unreachable or returns a 4xx/5xx HTTP status.
      */
-    public function init(string $telegrafUrl, bool $enabled = true): self
+    public function init(string $telegrafUrl, bool $enabled = true, string $writePrecision = Point::DEFAULT_WRITE_PRECISION): self
     {
         if (!$enabled) {
             $this->enabled = false;
@@ -99,12 +108,17 @@ class Metric
         if ($httpCode >= 400) {
             trigger_error(sprintf('⚠️ Telegraf rejected request (HTTP %s). Check authentication and permissions.', $httpCode), E_USER_WARNING);
         }
+        if (!in_array($writePrecision, WritePrecision::getAllowableEnumValues(), true)) {
+            trigger_error(sprintf('⚠️ Invalid write precision: ‘%s’. The default precision will be used instead.', $writePrecision), E_USER_WARNING);
+            $writePrecision = Point::DEFAULT_WRITE_PRECISION;
+        }
 
         $this->telegrafUrl = $telegrafUrl;
         $parsedUrl = parse_url($telegrafUrl);
         $this->telegrafHost = $parsedUrl['host'] ?? '127.0.0.1';
         $this->telegrafPort = $parsedUrl['port'] ?? 8186;
         $this->telegrafPath = $parsedUrl['path'] ?? '/api/v2/write';
+        $this->writePrecision = $writePrecision;
         $this->initialized = true;
 
         return $this;
@@ -153,6 +167,10 @@ class Metric
         
         if ($timestamp) {
             $PointWithContext->time($timestamp);
+        } else {
+            $timestamp = \DateTimeImmutable::createFromFormat('U.u', number_format(microtime(true), 6, '.', ''))
+            ->setTimezone(new \DateTimeZone('UTC'));
+            $PointWithContext->time($timestamp, $this->writePrecision);
         }
 
         $this->send($PointWithContext);
