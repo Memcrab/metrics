@@ -168,8 +168,15 @@ class Metric
         if ($timestamp) {
             $PointWithContext->time($timestamp);
         } else {
-            $timestamp = \DateTimeImmutable::createFromFormat('U.u', number_format(microtime(true), 6, '.', ''))
-            ->setTimezone(new \DateTimeZone('UTC'));
+            $timestamp = \DateTimeImmutable::createFromFormat('U.u', number_format(microtime(true), 6, '.', ''))->setTimezone(new \DateTimeZone('UTC'));
+            if($this->writePrecision == WritePrecision::NS || $this->writePrecision == WritePrecision::US) {
+                $datetime = $timestamp->format('Y-m-d\TH:i:s.uP');
+                $seconds = strtotime($datetime);
+                $microseconds = substr($datetime, 0, strlen($datetime) - 6);
+                $microseconds = substr($microseconds, -6);
+                $timestamp = $seconds . $microseconds . '000';
+            }
+
             $PointWithContext->time($timestamp, $this->writePrecision);
         }
 
